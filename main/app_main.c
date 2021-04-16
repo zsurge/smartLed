@@ -19,14 +19,12 @@
 void app_main(void)
 {
     int i = 0;
-
-    smartConfig_wifi();
-
-    printf("Hello world!\n");
-
     /* Print chip information */
     esp_chip_info_t chip_info;
     esp_chip_info(&chip_info);
+
+    printf("\n\n-------------------------------- Get Systrm Info Start------------------------------------------\n");    
+
     printf("This is %s chip with %d CPU cores, WiFi%s%s, ",
             CONFIG_IDF_TARGET,
             chip_info.cores,
@@ -35,11 +33,20 @@ void app_main(void)
 
     printf("silicon revision %d, ", chip_info.revision);
 
+
+    //获取IDF版本
+    printf("     SDK version:%s\n", esp_get_idf_version());
+    //获取芯片可用内存
+    printf("     esp_get_free_heap_size : %d  \n", esp_get_free_heap_size());
+    //获取从未使用过的最小内存
+    printf("     esp_get_minimum_free_heap_size : %d  \n", esp_get_minimum_free_heap_size());    
+
     printf("%dMB %s flash\n", spi_flash_get_chip_size() / (1024 * 1024),
             (chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external");
 
     printf("Free heap: %d\n", esp_get_free_heap_size());
 
+    smartConfig_wifi();
     //test_clear_wifi_param();
 
     mid_mqtt_start();

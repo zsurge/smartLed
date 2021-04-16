@@ -30,7 +30,7 @@ static EventGroupHandle_t s_wifi_event_group;
    to the AP with an IP? */
 static const int CONNECTED_BIT = BIT0;
 static const int ESPTOUCH_DONE_BIT = BIT1;
-static const char *TAG = "smartconfig_example";
+static const char *TAG = "smartconfig_wifi";
 
 typedef enum {
     wifi_unconfiged = 0,
@@ -45,12 +45,10 @@ static void check_wifi_config_in_nvs(void);
 static void event_handler(void* arg, esp_event_base_t event_base, 
                                 int32_t event_id, void* event_data)
 {
-    //if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         //不再此处创建空中配网的任务
         //xTaskCreate(smartconfig_example_task, "smartconfig_example_task", 4096, NULL, 3, NULL);
-    //} else 
-    
-    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_CONNECTED) {
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_CONNECTED) {
         //增加链接上WiFi后的信息提示
         ESP_LOGI(TAG, "Wifi Connected!");
     }  else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
@@ -58,7 +56,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         xEventGroupClearBits(s_wifi_event_group, CONNECTED_BIT);
         ESP_LOGI(TAG, "Wifi disconnect,try to reconnect...\r\n!");
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-        xEventGroupSetBits(s_wifi_event_group, CONNECTED_BIT);
+        xEventGroupSetBits(s_wifi_event_group, CONNECTED_BIT);  
     } else if (event_base == SC_EVENT && event_id == SC_EVENT_SCAN_DONE) {
         ESP_LOGI(TAG, "Scan done");
     } else if (event_base == SC_EVENT && event_id == SC_EVENT_FOUND_CHANNEL) {
@@ -105,34 +103,56 @@ static void event_handler(void* arg, esp_event_base_t event_base,
 
 static void initialise_wifi(void)
 {
+    //创建一个 LwIP 核心任务，并初始化 LwIP 相关工作
     ESP_ERROR_CHECK(esp_netif_init());
+
+    //创建一个事件标志组
     s_wifi_event_group = xEventGroupCreate();
+    
+    //调用事件循环，用于系统处理不同的事件
     ESP_ERROR_CHECK(esp_event_loop_create_default());
+
+    //创建有 TCP/IP 堆栈的默认网络接口实例绑定 station 或 AP。
     esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
     assert(sta_netif);
-
+    
+    //根据默认的配置初始化wifi驱动
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK( esp_wifi_init(&cfg) );
 
+
+    //向系统注册三组事件
     ESP_ERROR_CHECK( esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL) );
     ESP_ERROR_CHECK( esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL) );
     ESP_ERROR_CHECK( esp_event_handler_register(SC_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL) );
 
+    //设置模块工作在STA 模式
     ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA) );
+
+    //根据当前的配置开启wif
     ESP_ERROR_CHECK( esp_wifi_start() );
 }
 
 static void smartconfig_example_task(void * parm)
 {
+     //定义一个事件位变量来接收事件标志组等待函数的返回值
     EventBits_t uxBits;
+
+    //设置智能配网类型为 ESPTOUCH和AIRKISS 都可以
     ESP_ERROR_CHECK( esp_smartconfig_set_type(SC_TYPE_ESPTOUCH_AIRKISS) );
+
+    // 通过SMARTCONFIG_START_CONFIG_DEFAULT宏 来获取一个默认的smartconfig配置参数结构体变量
     smartconfig_start_config_t cfg = SMARTCONFIG_START_CONFIG_DEFAULT();
+
+    //开始智能配网 
     ESP_ERROR_CHECK( esp_smartconfig_start(&cfg) );
+
     while (1) {
+        /* 等待事件标志组，退出前清除设置的事件标志，任意置1就会返回*/
         uxBits = xEventGroupWaitBits(s_wifi_event_group, CONNECTED_BIT | ESPTOUCH_DONE_BIT, true, false, portMAX_DELAY); 
         if(uxBits & CONNECTED_BIT) {
             ESP_LOGI(TAG, "WiFi Connected to ap");
-        }
+        }   
         if(uxBits & ESPTOUCH_DONE_BIT) {
             ESP_LOGI(TAG, "smartconfig over");
             esp_smartconfig_stop();
@@ -181,6 +201,8 @@ static void check_wifi_config_in_nvs(void)
 
         initialise_wifi();
 
+        printf("u8GetWifiFlag = %d\r\n",u8GetWifiFlag);
+
         if(u8GetWifiFlag == 2)
         {
             //使用获取的配网信息链接无线网络
@@ -190,6 +212,7 @@ static void check_wifi_config_in_nvs(void)
         }
         else
         {
+            
             xTaskCreate(smartconfig_example_task, "smartconfig_example_task", 4096, NULL, 3, NULL);
         }
     }
